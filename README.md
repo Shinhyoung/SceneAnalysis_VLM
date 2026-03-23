@@ -1,0 +1,121 @@
+# YOLOE-26 Open-Vocabulary Real-Time Object Detection & Segmentation
+
+RealSense D455 카메라 (또는 웹캠) 영상에서 **한정되지 않은 어휘(open-vocabulary)** 로 객체를 실시간 검출하고, 세그멘테이션 마스크를 오버레이하는 프로그램입니다.
+
+## 주요 기능
+
+| 기능 | 설명 |
+|------|------|
+| **Open-Vocabulary 검출** | 텍스트 프롬프트로 임의의 객체를 검출 (YOLOE-26) |
+| **Prompt-Free 검출** | 1200+ 카테고리 자동 검출 (기본 모드) |
+| **세그멘테이션 마스크** | 검출 객체에 반투명 컬러 마스크 오버레이 |
+| **뎁스 거리 표시** | RealSense 깊이 센서로 객체까지 거리(m) 표시 |
+| **장면 분석 (VLM)** | Qwen2.5-VL-3B / Qwen3-VL-8B 온디바이스 모델로 장면을 한국어로 설명 |
+| **음성 출력 (TTS)** | edge-tts 신경망 음성으로 분석 결과를 자연스럽게 읽어줌 |
+| **모델 크기 전환** | Nano / Small / Large 모델을 단축키로 실시간 전환 |
+| **웹캠 폴백** | RealSense 미연결 시 자동으로 웹캠 사용 |
+
+## 개발 환경
+
+| 항목 | 사양 |
+|------|------|
+| OS | Windows 11 |
+| GPU | NVIDIA RTX 5070 |
+| 카메라 | Intel RealSense D455 (또는 웹캠) |
+| Python | 3.10 이상 |
+| CUDA | 12.x |
+
+## 설치 및 실행
+
+```bash
+# 1. 가상환경 생성
+python -m venv venv
+venv\Scripts\activate
+
+# 2. 패키지 설치
+pip install -r requirements.txt
+
+# 3. PyTorch CUDA 버전 설치 (GPU 사용 시)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# 4. 실행
+python main.py
+```
+
+> 첫 실행 시 YOLOE 모델과 VLM 모델이 자동 다운로드됩니다.
+
+## 단축키
+
+### 객체 검출
+
+| 키 | 기능 |
+|----|------|
+| `t` | 텍스트 입력 모드 - 검출할 객체 이름 입력 (영어, 쉼표로 복수 지정) |
+| `ESC` | 전체 객체 검출 모드 (prompt-free)로 복귀 |
+
+### 모델 전환
+
+| 키 | 모델 | 특성 |
+|----|------|------|
+| `1` | YOLOE-26 **Nano** | 빠른 속도, 가벼움 (~15MB) |
+| `2` | YOLOE-26 **Small** | 속도/정확도 균형 (~33MB) |
+| `3` | YOLOE-26 **Large** | 높은 정확도 (기본, ~80MB) |
+
+### 장면 분석 & 음성
+
+| 키 | 기능 |
+|----|------|
+| `7` | VLM: **Qwen2.5-VL-3B** 로드 (가벼움, ~2GB, 기본) |
+| `8` | VLM: **Qwen3-VL-8B** 로드 (고품질, ~6GB) |
+| `a` | 즉시 장면 분석 + TTS 음성 출력 |
+| `d` | 자동 분석 ON/OFF (2초 주기) |
+| `f` | TTS 음성 ON/OFF |
+
+### 기타
+
+| 키 | 기능 |
+|----|------|
+| `s` | 스크린샷 저장 (`screenshots/` 폴더) |
+| `q` | 종료 |
+
+## 화면 구성
+
+```
++--------------------------------------------------+
+| FPS: 30.0                    [Scene Analysis]     |
+| Objects: 5                   | 책상 앞에 사람이   |
+| Mode: Detect ALL             | 노트북으로 작업 중 |
+| VLM: Ready                   | 커피잔이 놓여있다  |
+| TTS: ON                      +-------------------+
+|                                                    |
+|   [ person 0.92 1.2m ]     [ laptop 0.88 0.8m ]  |
+|   [  세그멘테이션 마스크 오버레이  ]                |
+|                                                    |
+| [t] Search [ESC] All [v] VLM [a] Analyze [d] Auto |
++--------------------------------------------------+
+```
+
+## 사용되는 모델
+
+| 모델 | 용도 | 크기 |
+|------|------|------|
+| YOLOE-26 (n/s/l)-seg | 객체 검출 + 세그멘테이션 | 15~80MB |
+| YOLOE-26 (n/s/l)-seg-pf | Prompt-free 전체 검출 | 15~80MB |
+| Qwen2.5-VL-3B-Instruct | 장면 분석 (INT4, 기본) | ~2GB |
+| Qwen3-VL-8B-Instruct | 장면 분석 (INT4, 고품질) | ~6GB |
+| MobileCLIP | 텍스트 인코딩 (open-vocab) | ~242MB |
+
+## 프로젝트 구조
+
+```
+Yolo26Test/
+├── main.py              # 메인 프로그램
+├── requirements.txt     # Python 패키지 목록
+├── CLAUDE.md            # 프로젝트 명세
+├── README.md            # 이 파일
+└── screenshots/         # 스크린샷 저장 폴더
+```
+
+## 라이선스
+
+이 프로젝트는 학습 및 연구 목적으로 작성되었습니다.
