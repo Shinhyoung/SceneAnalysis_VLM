@@ -161,7 +161,12 @@ python main.py
 
 ```
 SceneAnalysis_VLM/
-├── main.py              # 메인 프로그램
+├── main.py              # 엔트리포인트 (메인 루프 + 키 입력 처리)
+├── config.py            # 전역 설정 상수 (모델, UI, TTS, 안전 분석)
+├── camera.py            # 카메라 초기화 + YOLOE 모델 로드
+├── vlm.py               # VLM 장면 분석기 (SceneAnalyzer 클래스)
+├── tts.py               # TTS 음성 출력 (TTSSpeaker 클래스)
+├── ui.py                # UI 렌더링 (HUD, 패널, 입력 바, 한글 폰트)
 ├── requirements.txt     # Python 패키지 목록
 ├── CLAUDE.md            # 프로젝트 명세
 ├── README.md            # 이 파일
