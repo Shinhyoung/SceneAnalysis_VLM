@@ -52,6 +52,30 @@ VLM_AUTO_INTERVAL = 2.0                 # 자동 분석 주기 (초)
 VLM_MAX_TOKENS = 200
 VLM_PROMPT = "이 장면을 한국어로 간결하게 설명해주세요. 보이는 사물, 사람, 행동, 환경을 포함해 2~3문장으로 요약하세요."
 
+# ── 안전 분석 설정 ────────────────────────────────────────────────────
+SAFETY_PROMPT = (
+    "이 장면에서 안전 위험 요소를 분석하세요. "
+    "화재, 연기, 쓰러진 사람, 위험한 물체, 비정상적 행동, 안전장비 미착용 등을 확인하고 "
+    "반드시 첫 줄에 위험 수준을 [안전], [주의], [위험], [긴급] 중 하나로 표시한 뒤 "
+    "구체적인 이유를 한국어 2~3문장으로 설명하세요."
+)
+DANGER_LEVELS = {
+    "안전": {"color": (0, 140, 0),   "label": "SAFE",      "border": (0, 200, 0)},
+    "주의": {"color": (0, 170, 210), "label": "CAUTION",   "border": (0, 220, 255)},
+    "위험": {"color": (0, 0, 180),   "label": "DANGER",    "border": (0, 0, 255)},
+    "긴급": {"color": (0, 0, 255),   "label": "EMERGENCY", "border": (0, 0, 255)},
+}
+
+
+def parse_danger_level(text: str) -> str:
+    """VLM 응답 앞부분에서 위험 수준 키워드를 추출. 심각한 순서로 탐색."""
+    head = text[:100]
+    for level in ("긴급", "위험", "주의", "안전"):
+        if level in head:
+            return level
+    return "안전"
+
+
 # ── UI 설정 ──────────────────────────────────────────────────────────
 INPUT_BAR_HEIGHT = 40
 INPUT_BAR_COLOR = (50, 50, 50)
@@ -226,6 +250,10 @@ class SceneAnalyzer:
         self.auto_mode = False
         self.last_analysis_time = 0.0
 
+        # 안전 감시 모드
+        self.safety_mode = False
+        self.danger_level = "안전"
+
         # 스레드 공유 프레임
         self._frame_lock = threading.Lock()
         self._pending_frame: np.ndarray | None = None
@@ -327,7 +355,7 @@ class SceneAnalyzer:
                     "role": "user",
                     "content": [
                         {"type": "image", "image": pil_image},
-                        {"type": "text", "text": VLM_PROMPT},
+                        {"type": "text", "text": SAFETY_PROMPT if self.safety_mode else VLM_PROMPT},
                     ],
                 }
             ]
@@ -365,6 +393,12 @@ class SceneAnalyzer:
 
             self.current_description = description
             self.last_analysis_time = time.time()
+
+            # 안전 모드: 위험 수준 파싱
+            if self.safety_mode:
+                self.danger_level = parse_danger_level(description)
+            else:
+                self.danger_level = "안전"
 
             # TTS로 분석 결과 음성 출력
             if self.tts:
@@ -407,8 +441,10 @@ class SceneAnalyzer:
         if self.analyzing:
             return f"VLM: Analyzing ({name})"
         if self.auto_mode:
-            return f"VLM: Auto ON ({name})"
-        return f"VLM: {name} [7/8]"
+            tag = " [Safety]" if self.safety_mode else ""
+            return f"VLM: Auto ON ({name}){tag}"
+        tag = " [Safety]" if self.safety_mode else ""
+        return f"VLM: {name} [7/8]{tag}"
 
     def get_tts_status(self) -> str:
         """TTS 상태 텍스트."""
@@ -486,7 +522,7 @@ def draw_input_bar(frame: np.ndarray, text: str, active: bool) -> np.ndarray:
     bar = frame.copy()
 
     if not active:
-        hint = "[t] Search  [ESC] All  [7/8] VLM  [a] Analyze  [d] Auto  [f] TTS"
+        hint = "[t] Search [ESC] All [7/8] VLM [a] Analyze [d] Auto [w] Safety [f] TTS"
         cv2.putText(bar, hint, (10, h - 12),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, PROMPT_HINT_COLOR, 1, cv2.LINE_AA)
         return bar
@@ -582,9 +618,30 @@ def draw_vlm_panel(frame: np.ndarray, analyzer: SceneAnalyzer) -> np.ndarray:
             paragraph = paragraph[max_chars:]
         lines.append(paragraph)
 
-    # 타이틀 추가
-    title = "Scene Analysis"
-    max_lines = (h - margin * 2 - padding * 2) // line_height - 1  # 화면 높이에 맞춤
+    # 안전 모드 여부에 따른 스타일 결정
+    is_safety = analyzer.safety_mode
+    danger = analyzer.danger_level if is_safety else None
+
+    if is_safety and danger:
+        level_info = DANGER_LEVELS.get(danger, DANGER_LEVELS["안전"])
+        title = f"Safety Monitor [{level_info['label']}]"
+        panel_bg = level_info["color"]
+        border_color = level_info["border"]
+        # 긴급: 4Hz 깜빡임 효과
+        if danger == "긴급":
+            flash = int(time.time() * 4) % 2 == 0
+            panel_bg = (0, 0, 255) if flash else (0, 0, 120)
+            border_color = (255, 255, 255) if flash else (0, 0, 255)
+        alpha = 0.85
+        title_color = border_color
+    else:
+        title = "Scene Analysis"
+        panel_bg = VLM_PANEL_COLOR
+        border_color = (100, 100, 100)
+        alpha = VLM_PANEL_ALPHA
+        title_color = (0, 255, 255)
+
+    max_lines = (h - margin * 2 - padding * 2) // line_height - 1
     if len(lines) > max_lines:
         lines = lines[:max_lines]
     all_lines = [title] + lines
@@ -593,18 +650,18 @@ def draw_vlm_panel(frame: np.ndarray, analyzer: SceneAnalyzer) -> np.ndarray:
     # 반투명 패널 배경
     overlay = frame.copy()
     cv2.rectangle(overlay, (panel_x, panel_y), (panel_x + panel_w, panel_y + panel_h),
-                  VLM_PANEL_COLOR, -1)
-    frame = cv2.addWeighted(overlay, VLM_PANEL_ALPHA, frame, 1 - VLM_PANEL_ALPHA, 0)
+                  panel_bg, -1)
+    frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
 
     # 패널 테두리
     cv2.rectangle(frame, (panel_x, panel_y), (panel_x + panel_w, panel_y + panel_h),
-                  (100, 100, 100), 1)
+                  border_color, 1)
 
     # 타이틀
     text_x = panel_x + padding
     text_y = panel_y + padding + line_height - 4
     cv2.putText(frame, title, (text_x, text_y),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 1, cv2.LINE_AA)
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, title_color, 1, cv2.LINE_AA)
 
     # 분석 결과 텍스트 (한글 지원)
     for i, line in enumerate(lines):
@@ -638,6 +695,7 @@ def main():
     print("  [a]   즉시 장면 분석 (+ TTS 음성 출력)")
     print("  [d]   자동 분석 ON/OFF 토글")
     print("  [f]   TTS 음성 ON/OFF 토글")
+    print("  [w]   안전 감시 모드 ON/OFF 토글")
     print("  [s]   스크린샷 저장")
     print("  [q]   종료")
     print()
@@ -754,6 +812,14 @@ def main():
                 cv2.putText(annotated, tts_status, (10, 185),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, tts_color, 2, cv2.LINE_AA)
 
+            # 분석 모드 표시
+            if analyzer.safety_mode:
+                level_info = DANGER_LEVELS.get(analyzer.danger_level, DANGER_LEVELS["안전"])
+                safety_text = f"Safety: {analyzer.danger_level} ({level_info['label']})"
+                safety_color = level_info["border"]
+                cv2.putText(annotated, safety_text, (10, 215),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, safety_color, 2, cv2.LINE_AA)
+
             # VLM 분석 결과 패널
             annotated = draw_vlm_panel(annotated, analyzer)
 
@@ -843,6 +909,16 @@ def main():
                     # TTS ON/OFF 토글
                     state = tts.toggle()
                     print(f"[TTS] 음성 출력: {'ON' if state else 'OFF'}")
+                elif key == ord("w"):
+                    # 안전 감시 모드 토글
+                    analyzer.safety_mode = not analyzer.safety_mode
+                    analyzer.danger_level = "안전"
+                    analyzer.current_description = ""
+                    mode_name = "안전감시" if analyzer.safety_mode else "일반분석"
+                    print(f"[VLM] 분석 모드: {mode_name}")
+                    # 자동 모드 활성 시 즉시 재분석
+                    if analyzer.auto_mode and analyzer.loaded:
+                        analyzer.request_analysis(frame)
                 elif key == ord("s"):
                     ts = time.strftime("%Y%m%d_%H%M%S")
                     path = SCREENSHOT_DIR / f"screenshot_{ts}.png"
